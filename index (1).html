@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Survivor Game</title>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #91efa8; touch-action: none; }
+    canvas { display: block; }
+
+    /* Mobile controls (unchanged) */
+    .mobile-controls { position: absolute; bottom: 20px; left: 20px; display: none; z-index: 1000; }
+    .control-pad { position: relative; width: 120px; height: 120px; }
+    .control-button { position: absolute; width: 40px; height: 40px; background: rgba(255,255,255,0.3);
+      border: 2px solid rgba(255,255,255,0.6); border-radius: 50%; display:flex; align-items:center; justify-content:center; font-size:18px;
+      color:#fff; user-select: none; touch-action: manipulation; }
+    .control-button.active { background: rgba(255,255,255,0.6); }
+    .btn-up{ top:0; left:40px } .btn-down{ bottom:0; left:40px } .btn-left{ top:40px; left:0 } .btn-right{ top:40px; right:0 }
+    @media (hover: none) and (pointer: coarse) { .mobile-controls{ display:block } }
+
+    /* HUD */
+    .health-container { position: fixed; top: 15px; left: 15px; right: 15px; max-width: 300px; z-index: 999; }
+    .health-bar-container { width: 100%; height: 25px; border: 3px solid rgba(255,255,255,0.9); border-radius: 15px; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); box-shadow: 0 2px 10px rgba(0,0,0,0.5); overflow: hidden; }
+    .health-bar { width:100%; height:100%; background: linear-gradient(90deg,#ff4444 0%,#ff6666 50%,#ff4444 100%); border-radius:12px; transition: width .3s ease; position: relative; }
+    .health-bar::after { content:''; position:absolute; top:0; left:0; right:0; height:50%; background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%); border-radius: 12px 12px 0 0; }
+    .health-text { color:#fff; font-family: Arial, sans-serif; font-size:16px; font-weight:bold; text-align:center; margin-top:8px; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); }
+
+    /* Wallet bar */
+    .wallet-bar { position: fixed; top: 90px; left: 15px; z-index: 999; display:flex; gap:8px; align-items:center; font-family: Arial, sans-serif; }
+    .wallet-btn { cursor:pointer; padding:6px 10px; border-radius: 10px; border:none; color:#fff; font-weight:bold; background: linear-gradient(145deg,#1565C0,#0D47A1); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    .wallet-btn.secondary { background: linear-gradient(145deg,#616161,#424242); }
+    .wallet-addr { color:#fff; opacity:0.9; font-size:14px; background: rgba(0,0,0,0.55); border:1px solid rgba(255,255,255,0.25); padding:6px 8px; border-radius: 8px; }
+    .hidden { display:none !important; }
+
+    /* Right-top stats */
+    .stats-container { position: fixed; top: 15px; right: 15px; max-width: 260px; z-index: 999; display: flex; flex-direction: column; gap: 10px; }
+    .stat-item { background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); border: 2px solid rgba(255,255,255,0.3); border-radius: 12px;
+      padding: 8px 15px; color: white; font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; text-align: center; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+    .score-item { background: linear-gradient(145deg, rgba(0,150,0,0.3), rgba(0,100,0,0.3)); border-color: rgba(0,255,0,0.5); }
+    .kills-item { background: linear-gradient(145deg, rgba(150,0,0,0.3), rgba(100,0,0,0.3)); border-color: rgba(255,0,0,0.5); }
+    .streak-item { background: linear-gradient(145deg, rgba(150,0,150,0.3), rgba(100,0,100,0.3)); border-color: rgba(255,0,255,0.5); position: relative; overflow: hidden; }
+    .multiplier-item { background: linear-gradient(145deg, rgba(255,150,0,0.3), rgba(255,100,0,0.3)); border-color: rgba(255,255,0,0.5); position: relative; overflow: hidden; }
+    .multiplier-item.active { animation: pulse 0.5s ease-in-out; }
+    @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.1)} 100%{transform:scale(1)} }
+    .difficulty-item { background: linear-gradient(145deg, rgba(255,100,0,0.3), rgba(200,80,0,0.3)); border-color: rgba(255,140,0,0.5); position: relative; overflow: hidden; }
+    .difficulty-item.scaling { animation: difficulty-pulse 2s ease-in-out infinite; border-color: rgba(255,69,0,0.8); }
+    @keyframes difficulty-pulse { 0%,100% { box-shadow:0 2px 10px rgba(0,0,0,0.3); transform:scale(1); } 50% { box-shadow:0 0 20px rgba(255,69,0,0.6); transform:scale(1.02); } }
+    .difficulty-progress-bar { width:100%; height:6px; background:rgba(0,0,0,0.5); border-radius:3px; margin-top:4px; overflow:hidden; border:1px solid rgba(255,140,0,0.3); }
+    .difficulty-progress-fill { height:100%; background:linear-gradient(90deg,#ff8c00,#ffa500,#ffb84d); border-radius:2px; transition:width 0.3s ease; position:relative; }
+    .difficulty-progress-fill::after { content:''; position:absolute; top:0; left:0; right:0; height:50%; background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.4) 50%,transparent 100%); border-radius:2px 2px 0 0; }
+    .difficulty-progress-fill.near-level-up { background:linear-gradient(90deg,#ff6b00,#ff8500,#ffa500); animation:progress-glow 1s ease-in-out infinite alternate; }
+    @keyframes progress-glow { 0%{ box-shadow: inset 0 0 5px rgba(255,140,0,0.5);} 100%{ box-shadow: inset 0 0 10px rgba(255,140,0,0.8);} }
+
+    .game-over-screen { position:fixed; inset:0; background:rgba(0,0,0,0.9); backdrop-filter:blur(10px); display:flex; align-items:center; justify-content:center; z-index:9999; }
+    .game-over-content { background:linear-gradient(145deg, rgba(40,40,40,0.95), rgba(20,20,20,0.95)); border:3px solid rgba(255,255,255,0.3);
+      border-radius:20px; padding:40px 30px; text-align:center; color:white; font-family:Arial,sans-serif; box-shadow:0 10px 30px rgba(0,0,0,0.8);
+      max-width:90vw; min-width:300px; }
+    .game-over-title { font-size:clamp(36px,8vw,72px); font-weight:bold; margin-bottom:20px; background:linear-gradient(45deg,#ff4444,#ff8888);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; text-shadow:2px 2px 4px rgba(0,0,0,0.5); }
+    .game-over-subtitle { font-size:clamp(18px,4vw,28px); margin-bottom:20px; color:rgba(255,255,255,0.8); }
+    .restart-hint { font-size:clamp(14px,3vw,20px); color:rgba(255,255,255,0.6); font-style:italic; }
+    .play-again-button { margin:16px auto 6px auto; padding:12px 24px; cursor:pointer; border:none; border-radius:12px; font-weight:bold;
+      background:linear-gradient(145deg,#4CAF50,#45a049); color:#fff; box-shadow:0 4px 12px rgba(76,175,80,0.4); font-size:clamp(16px,3.2vw,20px) }
+    .play-again-button:hover { filter:brightness(1.05); }
+
+    /* Start screen */
+    .game-start-screen { position:fixed; inset:0; background:linear-gradient(135deg, rgba(20,30,50,0.95), rgba(10,15,30,0.95)); backdrop-filter:blur(10px); display:flex; align-items:center; justify-content:center; z-index:9999; }
+    .start-content { background: linear-gradient(145deg, rgba(40,40,60,0.9), rgba(20,20,40,0.9)); border: 3px solid rgba(255,255,255,0.3); border-radius: 20px;
+      padding: 40px 30px; text-align: center; color: white; font-family: Arial, sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,0.8); max-width: 90vw; min-width: 300px; }
+    .game-title { font-size: clamp(32px, 8vw, 64px); font-weight: bold; margin-bottom: 20px; background: linear-gradient(45deg, #4CAF50, #8BC34A);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+    .game-subtitle { font-size: clamp(16px, 4vw, 24px); margin-bottom: 30px; color: rgba(255, 255, 255, 0.8); line-height: 1.4; }
+    .start-button { background: linear-gradient(145deg, #4CAF50, #45a049); border: none; border-radius: 15px; padding: 15px 40px; font-size: clamp(18px, 4vw, 28px);
+      font-weight: bold; color: white; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(76,175,80,0.4); text-transform: uppercase; letter-spacing: 1px; }
+    .start-button:hover { background: linear-gradient(145deg, #45a049, #4CAF50); box-shadow: 0 6px 20px rgba(76,175,80,0.6); transform: translateY(-2px); }
+    .start-button:active { transform: translateY(0); box-shadow: 0 2px 10px rgba(76,175,80,0.4); }
+    .game-instructions { margin-top: 25px; font-size: clamp(12px, 3vw, 16px); color: rgba(255,255,255,0.6); line-height: 1.6; }
+    .instruction-line { margin: 5px 0; }
+
+    .pause-screen { position:fixed; inset:0; background:rgba(0,0,0,0.55); display:flex; align-items:center; justify-content:center; z-index:9998; }
+    .pause-content { background: rgba(10,10,10,0.85); border: 2px solid rgba(255,255,255,0.2); border-radius: 16px; padding: 28px 36px; text-align:center; color:#fff; font-family: Arial, sans-serif; }
+    .pause-title { font-size:clamp(28px,6vw,56px); font-weight:bold; margin-bottom:8px; }
+    .pause-sub { opacity:0.8; font-size:clamp(14px,3vw,18px); }
+
+    /* Bottom bar */
+    .bottom-bar { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; z-index: 999;
+      background: rgba(0,0,0,0.65); border: 2px solid rgba(255,255,255,0.25); border-radius: 12px; padding: 8px 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      font-family: Arial, sans-serif; color: #fff; }
+    .shop-toggle-button { cursor: pointer; padding: 8px 12px; border-radius: 10px; border: none; color: #fff; font-weight: bold; background: linear-gradient(145deg, #388E3C, #2E7D32); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    .shop-toggle-button.secondary { background: linear-gradient(145deg, #546E7A, #37474F); }
+    .coins-slot { font-weight: bold; opacity: 0.95; }
+
+    /* Inventory */
+    .inventory-bar { position: fixed; left: 15px; bottom: 44px; display: none; z-index: 999;
+      gap: 8px; background: rgba(0,0,0,0.55); border: 2px solid rgba(255,255,255,0.25); padding: 8px 10px; border-radius: 12px;
+      font-family: Arial, sans-serif; color: #fff; align-items: center; }
+    .inv-item { position: relative; width: 42px; height: 42px; display: grid; place-items: center; background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.2); border-radius: 10px; cursor: pointer; user-select: none; }
+    .inv-item:hover { filter: brightness(1.1); }
+    .inv-icon { font-size: 22px; }
+    .inv-hint { position: absolute; top: -10px; right: -10px; background: rgba(0,0,0,0.8); border-radius: 10px; padding: 2px 5px; font-size: 10px; border: 1px solid rgba(255,255,255,0.2); }
+    .inv-count { position: absolute; bottom: -8px; right: -8px; background: #333; border-radius: 50%; width: 20px; height: 20px; display: grid; place-items: center; font-size: 12px; border: 2px solid rgba(255,255,255,0.6); }
+
+    .inventory-hint { position: fixed; left: 15px; bottom: 10px; z-index: 999; font-family: Arial, sans-serif; color: #fff; background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.25); padding: 4px 8px; border-radius: 8px; font-size: 12px; }
+    .inventory-hint.hidden { display:none; }
+
+    /* Boost bar */
+    .boost-bar { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 999; display: flex; flex-direction: column; gap: 4px;
+      background: rgba(0,0,0,0.55); border: 2px solid rgba(255,255,255,0.25); padding: 6px 10px; border-radius: 10px; font-family: Arial, sans-serif; color: #fff; }
+    .boost-bar.hidden { display: none; }
+    .boost-label { font-weight: bold; font-size: 13px; text-align: center; opacity: 0.9; }
+    .boost-progress { width: 220px; height: 8px; background: rgba(255,255,255,0.15); border-radius: 6px; overflow: hidden; }
+    .boost-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #76ff03, #00e676); }
+
+    /* Shop modal / Leaderboard common */
+    .shop-modal.hidden { display: none; }
+    .shop-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center; }
+    .shop-content { width: min(800px, 92vw); background: rgba(20,20,20,0.95); border: 2px solid rgba(255,255,255,0.2); border-radius: 16px; padding: 18px; color: #fff; font-family: Arial, sans-serif; }
+    .shop-header { text-align: center; margin-bottom: 10px; }
+    .shop-title { font-weight: bold; font-size: 22px; margin-bottom: 4px; }
+    .shop-sub { opacity: 0.8; font-size: 13px; }
+    .shop-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-top: 12px; }
+    .shop-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; }
+    .shop-icon { font-size: 28px; }
+    .shop-name { font-weight: bold; }
+    .shop-desc { opacity: 0.85; font-size: 12px; min-height: 32px; }
+    .shop-buy { cursor: pointer; padding: 8px 12px; border-radius: 10px; border: none; color: #fff; font-weight: bold; background: linear-gradient(145deg, #388E3C, #2E7D32); box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    .shop-footer { margin-top: 8px; text-align: center; opacity: 0.8; font-size: 12px; }
+
+    /* Leaderboard table */
+    .leaderboard-table { margin-top: 8px; background: rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); border-radius: 12px; }
+    .leaderboard-table .row { display:grid; grid-template-columns: 40px 1fr 1fr 1fr 1fr; padding: 8px 10px; gap: 6px; align-items:center; }
+    .leaderboard-table .row:nth-child(odd) { background: rgba(255,255,255,0.04); }
+    .leaderboard-table .head { background: rgba(255,255,255,0.1); font-weight: bold; }
+    .leaderboard-table .c { text-align:center; }
+    .leaderboard-table .addr { text-align: left; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    /* Responsive tweaks */
+    @media (max-width: 768px) {
+      .health-container { top: 10px; left: 10px; right: 10px; max-width: calc(100vw - 20px); }
+      .wallet-bar { top: 80px; left: 10px; }
+      .stats-container { top: 10px; right: 10px; max-width: calc(50vw - 20px); min-width: 120px; }
+      .stat-item { font-size: 14px; padding: 6px 12px; }
+      .health-bar-container { height: 20px; }
+      .health-text { font-size: 14px; margin-top: 6px; }
+      .game-over-content { padding: 30px 20px; margin: 20px; }
+      .start-content { padding: 30px 20px; margin: 20px; }
+      .start-button { padding: 12px 30px; width: 90%; max-width: 250px; }
+      .boost-progress { width: 160px; }
+      .inventory-bar { left: 8px; bottom: 56px; }
+      .bottom-bar { bottom: 8px; }
+    }
+    @media (max-width: 480px) {
+      .health-container { top: 8px; left: 8px; right: 8px; }
+      .wallet-bar { top: 72px; left: 8px; }
+      .stats-container { top: 8px; right: 8px; max-width: calc(45vw - 16px); }
+      .stat-item { font-size: 12px; padding: 5px 10px; }
+      .game-over-content, .start-content { padding: 25px 15px; margin: 15px; border-radius: 15px; }
+      .shop-content { width: 92vw; }
+      .shop-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://esm.sh/three@0.160.0",
+      "three/addons/": "https://esm.sh/three@0.160.0/addons/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="game-start-screen" id="gameStartScreen">
+    <div class="start-content">
+      <div class="game-title">3D SURVIVOR</div>
+      <div class="game-subtitle">Fight waves of enemies and survive as long as you can!</div>
+      <button class="start-button" id="startGameButton">Start Game</button>
+      <div class="game-instructions">
+        <div class="instruction-line"><strong>WASD</strong> — Move</div>
+        <div class="instruction-line"><strong>Mouse</strong> — Camera</div>
+        <div class="instruction-line"><strong>Auto</strong> — Shooting</div>
+        <div class="instruction-line"><strong>P / Esc</strong> — Pause / Resume</div>
+        <div class="instruction-line"><strong>B</strong> — Shop • <strong>L</strong> — Leaderboard</div>
+        <div class="instruction-line"><strong>1–4</strong> — Use inventory items</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom bar + Inventory + Boost UI created dynamically -->
+
+  <div class="mobile-controls" id="mobileControls">
+    <div class="control-pad">
+      <div class="control-button btn-up" id="btnUp">↑</div>
+      <div class="control-button btn-down" id="btnDown">↓</div>
+      <div class="control-button btn-left" id="btnLeft">←</div>
+      <div class="control-button btn-right" id="btnRight">→</div>
+    </div>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
